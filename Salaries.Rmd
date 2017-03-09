@@ -1,0 +1,173 @@
+---
+title: "Faculty Compensation in the Florida University System"
+author: "Caleb Dowdy"
+date: "March 6, 2017"
+output: pdf_document
+subtitle: Data Visualization
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+salaries <- read.csv("~/Documents/Classes/data-viz/assignments/assignment3/FLSUSSalaries.csv")
+library(dplyr)
+library(ggplot2)
+library(pander)
+```
+
+##Objectives
+
+- Provide a comparison study of how New College of Florida academic faculty compares to other members of the State University System in terms of size and compensation
+- Compare administrative salaries to academic faculty salaries 
+
+## Data
+Open records law in the state of Florida mandate that salaries paid to all state employees be a matter of public record. In particular, salaries for all employees of the State University System can be found [here](https://prod.flbog.net:4445/pls/apex/f?p=140:1:0:::::). 
+
+The data was obtained on March 6th, 2017 at 3:55 PM EST.
+
+To download all `r dim(salaries)[1]` records, please run the command shown below:
+
+```
+url <- "https://prod.flbog.net:4445/pls/apex/f?p=140:30:0"
+download.file(url, destfile = "~/FLSUSSalaries.csv")
+```
+
+The quality of the dataset is inherently bounded by the number of missing observations. Tabled below are the number of complete cases for each feature in our data.
+
+```{r, eval=FALSE}
+pandoc.table(sapply(salaries, function(x) sum(complete.cases(x))), style = "simple" , caption = "Number of complete cases by feature.")
+```
+
+University   Budget.Entity   Position.Number   Last.Name   First.Name   MI  
+------------ --------------- ----------------- ----------- ------------ -----
+   87031          87031            87031          87031       87031     87031
+
+
+ Employee.Type   FTE   Class.Code   Class.Title   Annual.Salary   OPS.Term.Amount 
+--------------- ----- ------------ ------------- --------------- -----------------
+     87031      84392    87031         87031          62693            24338    
+
+Roughly 28% of `Annual.Salary` has been recorded as missing.  Upon further inspection, this percentage is being inflated by including Other Personal Services (OPS) employment. OPS is a temporary form of employment that does not collect an annual salary.
+
+
+## Academic Faculty 
+Academic faculty will be defined as any employee with the `Class.Title`:
+
+- "Professor"
+- "Assistant Professor"
+- "Associate Professor"
+
+In addition to the restriction above, we will only be considering the subset of academic faculty that funding by state general revenue (Florida lottery and tuition).
+
+Directly comparing the academic faculty at New College of Florida to the faculty at the University of Florida raises certain problems.  For one the distribution of academic faculty across disciplines will not be identical and in some cases non-existent ( medical/law). To give you a sense of the differences across the 12 state schools, we have plotted the number of academic faculty currently employed below:
+
+```{r preprocessing, echo=FALSE}
+# Faculty Salaries
+fac_salary <- salaries %>% 
+  filter(Class.Title=="PROFESSOR" |
+           Class.Title=="ASSISTANT PROFESSOR" |
+           Class.Title=="ASSOCIATE PROFESSOR") %>%
+  filter(Budget.Entity == "Educational & General")
+
+fac_salary$classifier <- "academic" 
+
+# Faculty count data
+faculty <- fac_salary %>% 
+  group_by(University) %>%
+  summarize( n = n_distinct(paste(First.Name,Last.Name)))
+
+# Annual Spending on Faculty Salary
+budget <- fac_salary %>%
+  filter(!is.na(Annual.Salary)) %>%
+  group_by(University) %>%
+  mutate(budget=cumsum(Annual.Salary)) %>%
+  group_by(University) %>%
+  summarise(annual.budget=max(budget))
+```
+
+
+```{r Number of Academic Faculty, echo=FALSE}
+# Highlight New College of Florida
+area.color = rep("#999999",12)
+area.color[2]<-"#0d8dc4"
+
+
+# Add leveling to faculty to order them for our plot
+faculty <- transform(faculty, University = reorder(University, n))
+
+# Plot Faculty data 
+fac <-ggplot(faculty, aes(x = University, y= n,fill=University))
+fac +
+  geom_bar(stat="identity")+
+  ylab("Number of Academic Faculty") +
+  guides(fill=FALSE) +
+  scale_fill_manual(values=area.color)+
+  ggtitle("Total Academic Faculty across Florida State Schools")+
+  labs( caption="New College of Florida currently employ 94 academic faculty.")+
+  theme_minimal()
+```
+
+NCF faculty are measured in a different order of magnitude than most of the schools within this dataset. It logically follows that the annual spending on faculty salary also is measured in a different order of magnitude than most Florida state schools.
+
+```{r Annual Spending on Faculty Salary, echo = FALSE}
+# Highlight New College of Florida
+area.color = rep("#999999",12)
+area.color[2]<-"#0d8dc4"
+
+# Add leveling to faculty to order them for our plot
+budget <- transform(budget, University = reorder(University, annual.budget))
+
+# Plot Faculty data 
+bud <-ggplot(budget, aes(x = University, y = annual.budget/10E6, fill=University))
+bud +
+  geom_bar(stat="identity")+
+  ylab("Annual Spending on Faculty Salary (Millions of USD)") +
+  scale_fill_manual(values=area.color)+
+  guides(fill=FALSE) +
+  ggtitle("Aggregate Salary Spending across Florida State Schools")+
+  labs(caption="NCF annual spending on academic faculty salary: $1.4 million ") + 
+  theme_minimal()
+```
+
+We observe a number of outliers when plotting the distribution of salary across universities.  Unfortunately, the outliers need to be studied on a case-by-case basis.  For example, one of the largest salary outliers in the NCF academic faculty data corresponds to Dr. Gordon Michalson, a previous president of New College, who now is labeled as a professor. Outliers topping UF's salary data correspond to a practicing Radiologist, who is also coded as a professor. The list goes on and nothing short of googling every outlier comes to mind. 
+
+
+```{r Box Plotting}
+area.color = rep("#999999",12)
+area.color[8]<-"#0d8dc4"
+salary <- ggplot(
+  transform(fac_salary,
+            University = reorder(University, Annual.Salary)),
+  aes(x=University, y = Annual.Salary, fill=University))
+
+salary + 
+  geom_boxplot() + 
+  scale_fill_manual(values=area.color)+
+  labs(title="Annual Salary Distribution across Florida State Schools") + 
+  theme_minimal()
+```
+
+Due to it's size and scope, New College of Florida in many ways stands apart from the other eleven state funded schools.  However, the median annual salary for an academic faculty at NCF is close in value or slightly higher to the medians observed in the other schools.
+
+## Provide a study of how administrative salaries compare to faculty salaries.
+
+Regardless of school, the median earnings for an administrator are lower than the median earnings of their academic coworkers. The greatest earnings disparity between academia and administration occurs at Florida State University, where a ~$58,000 difference in compensation exists.
+
+Outliers in the  administrative faculty will also need to be researched before further analysis can be completed. 
+
+```{r ADMIN}
+admin <- salaries[grep("ADMIN",salaries$Class.Title),]
+admin$classifier <- "admin"
+
+# Faculty count data
+admin_count <- admin %>% 
+  group_by(University) %>%
+  summarize( n = n_distinct(paste(First.Name,Last.Name)))
+```
+
+```{r Number of Administrative Faculty, echo = FALSE}
+fac_admin <- bind_rows(fac_salary,admin)
+salary <- ggplot(bind_rows(fac_salary,admin), aes(x=University, y = Annual.Salary, fill = classifier))
+salary + geom_boxplot() + theme_minimal()
+```
+
+
